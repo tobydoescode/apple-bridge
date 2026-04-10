@@ -1,0 +1,3 @@
+import AppleBridgeLib
+
+AppleBridgeApp.run()

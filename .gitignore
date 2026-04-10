@@ -1,0 +1,15 @@
+# Swift
+.build/
+.swiftpm/
+
+# Node / MCP server
+mcp/node_modules/
+mcp/dist/
+
+# macOS
+.DS_Store
+
+# IDE
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/

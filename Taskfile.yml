@@ -1,0 +1,78 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build debug binary
+    cmds:
+      - swift build
+
+  release:
+    desc: Build release binary
+    cmds:
+      - swift build -c release
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - swift test
+
+  sign:
+    desc: Ad-hoc sign the release binary
+    deps: [release]
+    cmds:
+      - codesign --force --sign - .build/release/apple-bridge
+
+  install:
+    desc: Build, sign, and install to /usr/local/bin
+    deps: [sign]
+    cmds:
+      - cp .build/release/apple-bridge /usr/local/bin/apple-bridge
+
+  run:
+    desc: Build and run the server
+    deps: [build]
+    cmds:
+      - .build/debug/apple-bridge serve
+
+  run:status-bar:
+    desc: Build and run with status bar icon
+    deps: [build]
+    cmds:
+      - .build/debug/apple-bridge serve --status-bar
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - swift package clean
+
+  setup-launchd:
+    desc: Install and start the launchd agent
+    cmds:
+      - cp com.apple-bridge.agent.plist ~/Library/LaunchAgents/
+      - launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.apple-bridge.agent.plist
+
+  remove-launchd:
+    desc: Stop and uninstall the launchd agent
+    cmds:
+      - launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.apple-bridge.agent.plist
+      - rm ~/Library/LaunchAgents/com.apple-bridge.agent.plist
+
+  mcp:install:
+    desc: Install MCP server dependencies
+    dir: mcp
+    cmds:
+      - npm install
+
+  mcp:build:
+    desc: Build the MCP server
+    dir: mcp
+    deps: [mcp:install]
+    cmds:
+      - npm run build
+
+  mcp:publish:
+    desc: Publish MCP server to npm
+    dir: mcp
+    deps: [mcp:build]
+    cmds:
+      - npm publish --access public

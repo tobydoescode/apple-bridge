@@ -1,0 +1,41 @@
+{
+  "name": "@evoio/apple-bridge-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for managing Apple Reminders and Calendars via EventKit",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "apple-bridge-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "apple",
+    "reminders",
+    "calendars",
+    "eventkit",
+    "macos"
+  ],
+  "author": "tpettit",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tpettit/apple-bridge"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^5.8.0"
+  }
+}

@@ -1,0 +1,1047 @@
+import Foundation
+
+struct HealthResponse: Codable {
+    let status: String
+    let version: String
+}
+
+struct AuthMeResponse: Codable {
+    let permission: String
+}
+
+public enum HealthRoutes {
+    public static func register(on router: Router, keyStore: APIKeyStore? = nil) {
+        router.get("/health") { _ in
+            .json(HealthResponse(status: "ok", version: "1.0.0"))
+        }
+
+        if let keyStore = keyStore {
+            router.get("/auth/me") { req in
+                guard let authHeader = req.headers["authorization"],
+                      authHeader.lowercased().hasPrefix("bearer ") else {
+                    return .error("Missing Authorization header", status: 401)
+                }
+                let token = String(authHeader.dropFirst(7))
+                guard let permission = keyStore.getPermission(token) else {
+                    return .error("Invalid API key", status: 401)
+                }
+                return .json(AuthMeResponse(permission: permission))
+            }
+        }
+
+        router.get("/app") { _ in
+            HTTPResponse(
+                status: 200,
+                statusText: "OK",
+                headers: ["Content-Type": "text/html"],
+                body: webAppHTML.data(using: .utf8)
+            )
+        }
+
+        router.get("/openapi.yaml") { _ in
+            HTTPResponse(
+                status: 200,
+                statusText: "OK",
+                headers: [
+                    "Content-Type": "text/yaml",
+                    "Access-Control-Allow-Origin": "*",
+                ],
+                body: openAPISpec.data(using: .utf8)
+            )
+        }
+
+        router.get("/docs") { _ in
+            let html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>apple-bridge API</title>
+              <meta charset="utf-8"/>
+              <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+            </head>
+            <body>
+              <div id="swagger-ui"></div>
+              <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+              <script>
+                SwaggerUIBundle({
+                  url: '/openapi.yaml',
+                  dom_id: '#swagger-ui',
+                  presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+                  layout: "BaseLayout",
+                  persistAuthorization: true
+                });
+              </script>
+            </body>
+            </html>
+            """
+            return HTTPResponse(
+                status: 200,
+                statusText: "OK",
+                headers: ["Content-Type": "text/html"],
+                body: html.data(using: .utf8)
+            )
+        }
+    }
+}
+
+private let openAPISpec = """
+\(openAPIYAML)
+"""
+
+// Embedded OpenAPI spec so it works without file system access
+private let openAPIYAML = ##"""
+openapi: 3.0.3
+info:
+  title: apple-bridge
+  description: macOS EventKit HTTP API — access Apple Reminders and Calendars
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:23487
+    description: Local server
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API key created via `apple-bridge keys create`
+  schemas:
+    AlarmInput:
+      type: object
+      properties:
+        relativeOffset:
+          type: number
+          description: Seconds relative to event/due date (negative = before)
+          example: -3600
+        absoluteDate:
+          type: string
+          format: date-time
+    AlarmResponse:
+      type: object
+      properties:
+        relativeOffset:
+          type: number
+          nullable: true
+        absoluteDate:
+          type: string
+          format: date-time
+          nullable: true
+    RecurrenceRuleInput:
+      type: object
+      required: [frequency, interval]
+      properties:
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly, yearly]
+        interval:
+          type: integer
+          example: 1
+        daysOfTheWeek:
+          type: array
+          items:
+            type: string
+            enum: [MO, TU, WE, TH, FR, SA, SU]
+        daysOfTheMonth:
+          type: array
+          items:
+            type: integer
+        monthsOfTheYear:
+          type: array
+          items:
+            type: integer
+        end:
+          type: object
+          properties:
+            date:
+              type: string
+              format: date-time
+            count:
+              type: integer
+    RecurrenceRuleResponse:
+      type: object
+      properties:
+        frequency:
+          type: string
+        interval:
+          type: integer
+        daysOfTheWeek:
+          type: array
+          items:
+            type: string
+          nullable: true
+        daysOfTheMonth:
+          type: array
+          items:
+            type: integer
+          nullable: true
+        monthsOfTheYear:
+          type: array
+          items:
+            type: integer
+          nullable: true
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+        endCount:
+          type: integer
+          nullable: true
+    LocationInput:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        title:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        radius:
+          type: number
+        proximity:
+          type: string
+          enum: [enter, leave]
+    LocationResponse:
+      type: object
+      properties:
+        title:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+        longitude:
+          type: number
+        radius:
+          type: number
+        proximity:
+          type: string
+    CreateReminderRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          example: Buy groceries
+        notes:
+          type: string
+        listId:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
+        priority:
+          type: integer
+        alarms:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmInput'
+        recurrenceRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurrenceRuleInput'
+        location:
+          $ref: '#/components/schemas/LocationInput'
+        url:
+          type: string
+    UpdateReminderRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        notes:
+          type: string
+        listId:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
+        priority:
+          type: integer
+        alarms:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmInput'
+        recurrenceRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurrenceRuleInput'
+        location:
+          $ref: '#/components/schemas/LocationInput'
+        url:
+          type: string
+    ReminderResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        listId:
+          type: string
+        listTitle:
+          type: string
+        isCompleted:
+          type: boolean
+        completionDate:
+          type: string
+          format: date-time
+          nullable: true
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        priority:
+          type: integer
+        alarms:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmResponse'
+        recurrenceRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurrenceRuleResponse'
+        location:
+          $ref: '#/components/schemas/LocationResponse'
+        url:
+          type: string
+          nullable: true
+        creationDate:
+          type: string
+          format: date-time
+          nullable: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          nullable: true
+    CreateReminderListRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          example: Shopping
+        color:
+          type: string
+          example: "#FF6B6B"
+    UpdateReminderListRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        color:
+          type: string
+    ReminderListResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        color:
+          type: string
+          nullable: true
+        isDefault:
+          type: boolean
+        sourceTitle:
+          type: string
+    CreateCalendarEventRequest:
+      type: object
+      required: [title, startDate, endDate]
+      properties:
+        title:
+          type: string
+          example: Team Standup
+        notes:
+          type: string
+        calendarId:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        isAllDay:
+          type: boolean
+        location:
+          type: string
+        url:
+          type: string
+        availability:
+          type: string
+          enum: [busy, free, tentative, unavailable]
+        alarms:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmInput'
+        recurrenceRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurrenceRuleInput'
+    UpdateCalendarEventRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        notes:
+          type: string
+        calendarId:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        isAllDay:
+          type: boolean
+        location:
+          type: string
+        url:
+          type: string
+        availability:
+          type: string
+          enum: [busy, free, tentative, unavailable]
+        alarms:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmInput'
+        recurrenceRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurrenceRuleInput'
+    CalendarEventResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        calendarId:
+          type: string
+        calendarTitle:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        isAllDay:
+          type: boolean
+        location:
+          type: string
+          nullable: true
+        url:
+          type: string
+          nullable: true
+        availability:
+          type: string
+        status:
+          type: string
+        alarms:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmResponse'
+        recurrenceRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurrenceRuleResponse'
+        attendees:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttendeeResponse'
+        hasRecurrenceRules:
+          type: boolean
+        organizer:
+          type: string
+          nullable: true
+        creationDate:
+          type: string
+          format: date-time
+          nullable: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          nullable: true
+    AttendeeResponse:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        status:
+          type: string
+    CreateCalendarRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          example: Work
+        color:
+          type: string
+          example: "#4A90D9"
+    UpdateCalendarRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        color:
+          type: string
+    CalendarResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        color:
+          type: string
+          nullable: true
+        type:
+          type: string
+        isDefault:
+          type: boolean
+        allowsContentModifications:
+          type: boolean
+        sourceTitle:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+paths:
+  /health:
+    get:
+      summary: Health check
+      security: []
+      tags: [Health]
+      responses:
+        '200':
+          description: Server is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  version:
+                    type: string
+  /reminders:
+    get:
+      summary: List reminders
+      tags: [Reminders]
+      parameters:
+        - name: listId
+          in: query
+          schema:
+            type: string
+        - name: completed
+          in: query
+          schema:
+            type: boolean
+        - name: dueBefore
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: dueAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: priority
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of reminders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReminderResponse'
+                  count:
+                    type: integer
+    post:
+      summary: Create a reminder
+      tags: [Reminders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReminderRequest'
+      responses:
+        '201':
+          description: Reminder created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderResponse'
+        '400':
+          description: Invalid request
+  /reminders/{id}:
+    get:
+      summary: Get a reminder
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reminder found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderResponse'
+        '404':
+          description: Not found
+    put:
+      summary: Update a reminder (full)
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReminderRequest'
+      responses:
+        '200':
+          description: Reminder updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderResponse'
+        '404':
+          description: Not found
+    patch:
+      summary: Update a reminder (partial)
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReminderRequest'
+      responses:
+        '200':
+          description: Reminder updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderResponse'
+        '404':
+          description: Not found
+    delete:
+      summary: Delete a reminder
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /reminders/{id}/complete:
+    post:
+      summary: Mark reminder complete
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reminder completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderResponse'
+        '404':
+          description: Not found
+  /reminders/{id}/uncomplete:
+    post:
+      summary: Mark reminder incomplete
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reminder marked incomplete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderResponse'
+        '404':
+          description: Not found
+  /reminder-lists:
+    get:
+      summary: List all reminder lists
+      tags: [Reminder Lists]
+      responses:
+        '200':
+          description: List of reminder lists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReminderListResponse'
+                  count:
+                    type: integer
+    post:
+      summary: Create a reminder list
+      tags: [Reminder Lists]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReminderListRequest'
+      responses:
+        '201':
+          description: Reminder list created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderListResponse'
+  /reminder-lists/{id}:
+    get:
+      summary: Get a reminder list
+      tags: [Reminder Lists]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reminder list found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderListResponse'
+        '404':
+          description: Not found
+    put:
+      summary: Update a reminder list
+      tags: [Reminder Lists]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReminderListRequest'
+      responses:
+        '200':
+          description: Reminder list updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderListResponse'
+        '404':
+          description: Not found
+    delete:
+      summary: Delete a reminder list
+      tags: [Reminder Lists]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /events:
+    get:
+      summary: List calendar events
+      tags: [Calendar Events]
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: calendarId
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CalendarEventResponse'
+                  count:
+                    type: integer
+        '400':
+          description: Missing required date parameters
+    post:
+      summary: Create a calendar event
+      tags: [Calendar Events]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCalendarEventRequest'
+      responses:
+        '201':
+          description: Event created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarEventResponse'
+  /events/{id}:
+    get:
+      summary: Get a calendar event
+      tags: [Calendar Events]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Event found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarEventResponse'
+        '404':
+          description: Not found
+    put:
+      summary: Update a calendar event (full)
+      tags: [Calendar Events]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCalendarEventRequest'
+      responses:
+        '200':
+          description: Event updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarEventResponse'
+        '404':
+          description: Not found
+    patch:
+      summary: Update a calendar event (partial)
+      tags: [Calendar Events]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCalendarEventRequest'
+      responses:
+        '200':
+          description: Event updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarEventResponse'
+        '404':
+          description: Not found
+    delete:
+      summary: Delete a calendar event
+      tags: [Calendar Events]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: span
+          in: query
+          description: '"this" (default) or "future" for recurring events'
+          schema:
+            type: string
+            enum: [this, future]
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /calendars:
+    get:
+      summary: List all event calendars
+      tags: [Calendars]
+      responses:
+        '200':
+          description: List of calendars
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CalendarResponse'
+                  count:
+                    type: integer
+    post:
+      summary: Create a calendar
+      tags: [Calendars]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCalendarRequest'
+      responses:
+        '201':
+          description: Calendar created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarResponse'
+  /calendars/{id}:
+    get:
+      summary: Get a calendar
+      tags: [Calendars]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Calendar found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarResponse'
+        '404':
+          description: Not found
+    put:
+      summary: Update a calendar
+      tags: [Calendars]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCalendarRequest'
+      responses:
+        '200':
+          description: Calendar updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarResponse'
+        '404':
+          description: Not found
+    delete:
+      summary: Delete a calendar
+      tags: [Calendars]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+"""##
