@@ -1,15 +1,21 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "assignees": ["tobydoescode"],
   "packageRules": [
     {
-      "matchPackageNames": ["kubernetes"],
-      "rangeStrategy": "bump"
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
     },
     {
-      "groupName": "dev dependencies",
-      "matchDepTypes": ["project.optional-dependencies"],
-      "matchPackagePatterns": ["pytest*", "ruff"]
+      "matchUpdateTypes": ["minor"],
+      "automerge": false,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "minimumReleaseAge": "30 days"
     }
   ]
 }
