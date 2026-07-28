@@ -1,10 +1,10 @@
 # @evoio/apple-bridge-mcp
 
-MCP server for managing Apple Reminders and Calendars. Wraps the [apple-bridge](https://github.com/tpettit/apple-bridge) HTTP API as Model Context Protocol tools for AI agents.
+MCP server for managing Apple Reminders and Calendars. Wraps the [apple-bridge](https://github.com/tobydoescode/apple-bridge) HTTP API as Model Context Protocol tools for AI agents.
 
 ## Prerequisites
 
-- [apple-bridge](https://github.com/tpettit/apple-bridge) running on the target macOS machine
+- [apple-bridge](https://github.com/tobydoescode/apple-bridge) running on the target macOS machine
 - An API key created via `apple-bridge keys create`
 
 ## Usage with Claude Code
