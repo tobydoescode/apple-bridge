@@ -2,10 +2,12 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "assignees": ["tobydoescode"],
+  "platformAutomerge": true,
   "packageRules": [
     {
       "matchUpdateTypes": ["patch"],
-      "automerge": true
+      "automerge": true,
+      "minimumReleaseAge": "3 days"
     },
     {
       "matchUpdateTypes": ["minor"],
