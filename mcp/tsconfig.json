@@ -7,7 +7,10 @@
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // TypeScript 6 no longer auto-includes @types/* packages, so the Node
+    // globals used in src/index.ts have to be requested explicitly.
+    "types": ["node"]
   },
   "include": ["src"]
 }
