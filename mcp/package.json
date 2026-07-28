@@ -29,6 +29,9 @@
   ],
   "author": "tpettit",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/tpettit/apple-bridge"
