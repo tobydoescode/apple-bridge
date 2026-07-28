@@ -16,8 +16,16 @@ permissions:
 
 jobs:
   mcp:
-    name: MCP server
+    name: MCP server (node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    strategy:
+      # Report both versions independently - a break on one shouldn't mask
+      # the result on the other.
+      fail-fast: false
+      matrix:
+        # Keep in step with the engines range in mcp/package.json. Renovate
+        # cannot bump a matrix list, so these are maintained by hand.
+        node: [22, 24]
     defaults:
       run:
         working-directory: mcp
@@ -26,7 +34,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: npm
           cache-dependency-path: mcp/package-lock.json
 
