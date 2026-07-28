@@ -22,7 +22,7 @@ jobs:
       run:
         working-directory: mcp
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v5
         with:
@@ -48,7 +48,7 @@ jobs:
     name: Swift package
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Show toolchain
         run: swift --version
