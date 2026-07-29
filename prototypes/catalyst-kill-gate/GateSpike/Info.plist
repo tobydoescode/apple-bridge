@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+
+	<!-- CHECK 1: agent app — no dock icon, no menu bar, no window.
+	     Whether LaunchServices honours this for a Mac Catalyst bundle is
+	     precisely what this spike is testing. -->
+	<key>LSUIElement</key>
+	<true/>
+
+	<!-- CHECK 3: HomeKit. Without this string the app is killed on first
+	     HMHomeManager use. -->
+	<key>NSHomeKitUsageDescription</key>
+	<string>GateSpike reads your home's scenes to prove a Catalyst app can hold a live HomeKit connection while running headless. It only reads; it never writes.</string>
+
+	<!-- MEASURED FINDING. Omitting UIApplicationSceneManifest entirely does NOT
+	     give you a windowless app: UIKit falls back to legacy single-window
+	     behaviour and creates a blank window anyway (observed — a blank
+	     GateSpike window appeared, with appKitWindows=1 and the delegate's
+	     configurationForConnecting being called).
+
+	     The manifest must be PRESENT and declare ZERO scene configurations. Then
+	     UIKit has a manifest to consult, finds no scene to instantiate, and
+	     creates nothing. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict/>
+	</dict>
+
+	<key>UILaunchScreen</key>
+	<dict/>
+</dict>
+</plist>

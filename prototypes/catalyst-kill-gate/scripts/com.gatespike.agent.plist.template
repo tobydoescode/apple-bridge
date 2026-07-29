@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.gatespike.agent</string>
+
+    <!-- MEASURED FINDING, not a style choice.
+         Exec'ing the inner binary directly — exactly what the real apple-bridge
+         plist does today with /usr/local/bin/apple-bridge — makes TCC kill the
+         process on first HomeKit use:
+
+           namespace TCC, "attempted to access privacy-sensitive data without a
+           usage description ... must contain an NSHomeKitUsageDescription key"
+
+         The key IS present in the built Info.plist. The problem is that a direct
+         exec bypasses LaunchServices, so the process never acquires its bundle
+         identity and TCC judges it as unbundled code.
+
+         Routing through `open` makes LaunchServices launch the bundle properly.
+         -W makes open block until the app exits, which is what KeepAlive needs
+         in order to observe a death and respawn; -n forces a fresh instance. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>-W</string>
+        <string>-n</string>
+        <string>@APP_PATH@</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>GATESPIKE_VIA_LAUNCHD</key>
+        <string>1</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Unconditional, unlike the real plist's SuccessfulExit=false. We want to
+         see respawn behaviour, not just crash recovery. -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- A UIKit app needs a GUI session. The real apple-bridge plist omits this
+         key; if the spike needs it, that is a finding for the rewritten plist. -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <!-- Mirrors the real plist. If a Catalyst app misbehaves under Background
+         (throttled, or refuses to show a status item), try Interactive — that
+         swap is itself a finding worth recording. -->
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- launchd opens these as the user and passes the fds in, so the sandbox
+         does not block them. Confirming that is part of check 5. -->
+    <key>StandardOutPath</key>
+    <string>/tmp/gatespike.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/gatespike.stderr.log</string>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+</dict>
+</plist>
