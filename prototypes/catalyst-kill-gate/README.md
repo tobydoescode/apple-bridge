@@ -2,8 +2,11 @@
 
 Throwaway spike for [apple-bridge#15](https://github.com/tobydoescode/apple-bridge/issues/15).
 
-**Verdict: all five checks pass. Single-process Catalyst is viable. The two-process
-split is not forced.**
+**Verdict: the three fatal checks pass. Single-process Catalyst is viable and the
+two-process split is not forced.** Checks 2, 3 and 5 — socket, live HomeKit,
+launchd — all pass together in one process, which was the actual question. Check 4
+passes. Check 1 passes with a caveat: headless at launch and steady state, but
+activation still creates a window.
 
 The question: can a Mac Catalyst app run headless under launchd, bind a listening
 socket, hold a live `HMHomeManager`, and show a status bar item — with no window
@@ -26,7 +29,7 @@ full JSON state, and `./scripts/scorecard.sh` renders it as the five checks.
 
 | # | Check | Result |
 |---|---|---|
-| 1 | Headless — no window, no dock icon | **PASS** — `activationPolicy=accessory`, no visible window |
+| 1 | Headless — no window, no dock icon | **PASS with caveat** — `activationPolicy=accessory`, no window at launch or steady state; **activation still creates one** |
 | 2 | Binds socket, serves HTTP, sandboxed | **PASS** — `NWListener` on 127.0.0.1:23499 from inside the container |
 | 3 | Live `HMHomeManager` | **PASS** — `authorized+determined`, home loaded in 0.5–1.4s |
 | 4 | `NSStatusItem` via AppKit plugin bundle | **PASS** — status item created from the Catalyst process |
@@ -37,13 +40,19 @@ Home read (bonus data for
 accessories, 4 zones, 13 user-defined scenes**, structure only, no characteristic
 reads.
 
-## The four findings that cost time
+## The five findings that cost time
 
-**1. `LSUIElement` alone does not give you a windowless app.** It suppresses the
-dock icon — `NSApplication.activationPolicy()` really does report `.accessory` for
-a Catalyst bundle — but with **no** `UIApplicationSceneManifest`, UIKit falls back
-to legacy single-window behaviour and puts a blank window on screen. The fix is a
-manifest that is *present* and declares *zero* scene configurations:
+**1. A Catalyst app cannot be kept windowless across activation.** Three things
+were tried and the honest result is partial:
+
+- `LSUIElement` **works** for the dock icon — `NSApplication.activationPolicy()`
+  reports `.accessory`, no Dock presence, no app menu.
+- With **no** `UIApplicationSceneManifest`, UIKit falls back to legacy
+  single-window behaviour and shows a blank window immediately.
+- With the manifest *present* and declaring *zero* configurations, plus no
+  `configurationForConnecting` override, the app launches with **no window** —
+  but **activating it (e.g. `open`) still produces one.** Catalyst grants a
+  default scene on activation regardless.
 
 ```xml
 <key>UIApplicationSceneManifest</key>
@@ -53,9 +62,19 @@ manifest that is *present* and declares *zero* scene configurations:
 </dict>
 ```
 
-AppKit still reports exactly one window and UIKit still calls
-`configurationForConnecting`, but nothing is shown. Don't read either signal as
-failure.
+So: headless at launch and at steady state under launchd — which is the case that
+matters for a daemon, since nothing activates it — but not *permanently*
+windowless. A real app needs a workaround for the activation case. Untested
+candidate: have the AppKit plugin observe `NSWindow` creation and close or order
+it out, since the plugin is the only code that can see AppKit.
+
+Note `appKitWindows` is 1 even when nothing is visible; that is Catalyst's
+internal host window. Don't read it as failure.
+
+**Also, an instructive self-inflicted wound:** an earlier version implemented
+`configurationForConnecting` purely to *record* that UIKit had asked for a scene.
+Returning a valid `UISceneConfiguration` **grants** the request — so the
+instrumentation was itself creating the window it reported.
 
 **2. launchd must not exec the inner binary.** Doing what the current
 apple-bridge plist does — pointing `ProgramArguments` straight at the executable —
@@ -99,6 +118,17 @@ copied into `Contents/PlugIns`, `dlopen`'d at runtime. The plugin reports
 The `@objc(GSStatusBarPluginProtocol)` name on the duplicated protocol is
 load-bearing — without it Swift mangles the runtime name per module and every cast
 fails.
+
+**5. `NSApplication.terminate` does not reliably quit a Catalyst process.** A
+status-bar Quit wired to `#selector(NSApplication.terminate(_:))` took **two**
+clicks: the first surfaced the host window instead of exiting. Routing the menu
+action back into the Catalyst side and calling `exit(0)` exits cleanly on one
+click. The plugin therefore takes a quit handler rather than talking to `NSApp`.
+
+Separately: under a launchd job with unconditional `KeepAlive`, Quit is
+unwinnable — the process exits, `open -W` returns, launchd respawns it, forever.
+A real daemon's Quit must either stop the launchd job or the plist must make
+`KeepAlive` conditional.
 
 ## Limitations
 

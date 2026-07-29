@@ -52,6 +52,13 @@ final class StatusBarBridge {
 
         self.plugin = plugin
 
+        // exit(0) from the Catalyst side is deterministic; asking AppKit to
+        // terminate is not.
+        plugin.setQuitHandler {
+            log("quit requested from status bar — exiting")
+            exit(0)
+        }
+
         let shown = plugin.showStatusItem(title: title)
         Report.shared.set("check4_status_item_shown", shown)
         Report.shared.set("check4_detail", shown ? "NSStatusItem created from Catalyst process" : "plugin loaded but showStatusItem returned false")

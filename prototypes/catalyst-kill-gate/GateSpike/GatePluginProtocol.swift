@@ -15,6 +15,11 @@ protocol GatePluginProtocol: NSObjectProtocol {
     /// CHECK 4: create an NSStatusItem from inside a Catalyst process.
     func showStatusItem(title: String) -> Bool
 
+    /// MEASURED: NSApplication.terminate is unreliable from a Catalyst process —
+    /// the first call surfaces the host window instead of exiting. The app supplies
+    /// its own quit action instead.
+    func setQuitHandler(_ handler: @escaping @convention(block) () -> Void)
+
     func updateTitle(_ title: String)
 
     /// CHECK 1, objectively. Only AppKit can answer this, and only the plugin has

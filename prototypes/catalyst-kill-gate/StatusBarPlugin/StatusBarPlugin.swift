@@ -10,6 +10,16 @@ import AppKit
 @objc(GSStatusBarPlugin)
 final class StatusBarPlugin: NSObject, GatePluginProtocol {
     private var statusItem: NSStatusItem?
+    private var quitHandler: (() -> Void)?
+
+    func setQuitHandler(_ handler: @escaping @convention(block) () -> Void) {
+        quitHandler = handler
+    }
+
+    @objc private func quitPressed() {
+        NSLog("[plugin] quit pressed — handing off to the Catalyst side")
+        quitHandler?()
+    }
 
     func showStatusItem(title: String) -> Bool {
         // NSStatusBar is main-thread-only. The caller guarantees main.
@@ -32,11 +42,21 @@ final class StatusBarPlugin: NSObject, GatePluginProtocol {
             keyEquivalent: ""
         )
         menu.addItem(.separator())
-        menu.addItem(
-            withTitle: "Quit",
-            action: #selector(NSApplication.terminate(_:)),
+
+        // MEASURED FINDING: #selector(NSApplication.terminate(_:)) here does NOT
+        // reliably quit a Catalyst process. The first invocation surfaces the
+        // Catalyst host window instead of terminating, and it takes a second
+        // click to actually exit.
+        //
+        // So the menu item calls back into the Catalyst side, which exits
+        // deterministically. AppKit is not asked to terminate anything.
+        let quitItem = NSMenuItem(
+            title: "Quit",
+            action: #selector(quitPressed),
             keyEquivalent: "q"
         )
+        quitItem.target = self
+        menu.addItem(quitItem)
         item.menu = menu
 
         statusItem = item

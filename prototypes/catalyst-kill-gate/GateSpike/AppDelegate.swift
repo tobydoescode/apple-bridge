@@ -39,14 +39,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
-    // If a scene ever does get created, that itself is a finding — record it.
-    func application(
-        _ application: UIApplication,
-        configurationForConnecting connectingSceneSession: UISceneSession,
-        options: UIScene.ConnectionOptions
-    ) -> UISceneConfiguration {
-        log("WARNING: UIKit asked for a scene configuration — a window may appear")
-        Report.shared.set("check1_scene_requested", true)
-        return UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
-    }
+    // DELIBERATELY NOT IMPLEMENTED.
+    //
+    // An earlier version implemented configurationForConnecting in order to
+    // *record* that UIKit had asked for a scene. That was the bug: returning a
+    // valid UISceneConfiguration GRANTS the request, so UIKit built a window —
+    // which then appeared spontaneously on activation, not at launch. The
+    // "sceneRequested" flag was reporting a window the flag itself had caused.
+    //
+    // With an empty UISceneConfigurations dict in Info.plist and no delegate
+    // override, UIKit has nothing to instantiate and creates no window.
 }
