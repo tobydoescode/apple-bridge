@@ -57,25 +57,112 @@ final class HTTPProbe {
         }
     }
 
-    /// Deliberately the dumbest possible HTTP server: read whatever arrives,
-    /// ignore it, reply with the report. No routing, no parsing, no keep-alive.
+    /// Barely an HTTP server: pull the path out of the request line, dispatch,
+    /// reply, close. No keep-alive, no headers parsed, no status codes but 200.
+    /// Measurements can take minutes, so the reply is sent when they finish.
     private func serve(_ connection: NWConnection) {
         connection.start(queue: .global(qos: .userInitiated))
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { _, _, _, _ in
-            let body = Report.shared.jsonData()
-            var response = Data("""
-            HTTP/1.1 200 OK\r
-            Content-Type: application/json\r
-            Content-Length: \(body.count)\r
-            Connection: close\r
-            \r
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, _, _ in
+            let request = String(decoding: data ?? Data(), as: UTF8.self)
+            let path = request
+                .split(separator: "\r\n", maxSplits: 1).first
+                .map { $0.split(separator: " ") }
+                .flatMap { $0.count >= 2 ? String($0[1]) : nil } ?? "/"
 
-            """.utf8)
-            response.append(body)
+            Task {
+                let body = await MeasureRoutes.handle(path: path)
+                var response = Data("""
+                HTTP/1.1 200 OK\r
+                Content-Type: application/json\r
+                Content-Length: \(body.count)\r
+                Connection: close\r
+                \r
 
-            connection.send(content: response, completion: .contentProcessed { _ in
-                connection.cancel()
-            })
+                """.utf8)
+                response.append(body)
+
+                connection.send(content: response, completion: .contentProcessed { _ in
+                    connection.cancel()
+                })
+            }
         }
+    }
+}
+
+/// Routes for apple-bridge#18. Each measurement is its own endpoint so they can
+/// be run one at a time and compared, rather than all firing at launch.
+enum MeasureRoutes {
+    static func handle(path: String) async -> Data {
+        let route = path.split(separator: "?").first.map(String.init) ?? "/"
+        let query = path.split(separator: "?").dropFirst().first.map(String.init) ?? ""
+
+        func intParam(_ name: String, _ fallback: Int) -> Int {
+            for pair in query.split(separator: "&") {
+                let kv = pair.split(separator: "=")
+                if kv.count == 2, kv[0] == name, let v = Int(kv[1]) { return v }
+            }
+            return fallback
+        }
+
+        let probe = MeasureProbe.shared
+        var payload: [String: Any]
+
+        switch route {
+        case "/":
+            return Report.shared.jsonData()
+        case "/measure/structure":
+            payload = probe.structure()
+        case "/measure/latency":
+            payload = await probe.latencySample(count: intParam("n", 25))
+        case "/measure/whole-house":
+            payload = await probe.wholeHouse(concurrent: false)
+        case "/measure/whole-house-concurrent":
+            payload = await probe.wholeHouse(
+                concurrent: true,
+                concurrencyLimit: intParam("limit", 8)
+            )
+        case "/measure/unreachable":
+            payload = await probe.unreachableProbe()
+        case "/measure/enable-notifications":
+            payload = await probe.enableNotifications(limit: intParam("n", 40))
+        case "/measure/watch":
+            payload = probe.watchReport()
+        case "/measure/write-scene":
+            // The only mutating route. Requires confirm=yes so it cannot be hit
+            // by accident, and the scene is deleted again unless keep=1.
+            if query.contains("confirm=yes") {
+                payload = await probe.writeSceneCost(
+                    deviceCount: intParam("devices", 5),
+                    keep: intParam("keep", 0) == 1
+                )
+            } else {
+                payload = ["error": "refusing to write", "hint": "add confirm=yes"]
+            }
+        default:
+            payload = [
+                "error": "unknown route",
+                "routes": [
+                    "/", "/measure/structure", "/measure/latency?n=25",
+                    "/measure/whole-house", "/measure/whole-house-concurrent?limit=8",
+                    "/measure/unreachable", "/measure/enable-notifications?n=40",
+                    "/measure/watch",
+                ],
+            ]
+        }
+
+        payload["route"] = route
+
+        // JSONSerialization RAISES an ObjC exception on an invalid object rather
+        // than throwing, so `try?` does not save you — the process aborts. An
+        // ArraySlice from .prefix() is invalid and killed this app once already.
+        guard JSONSerialization.isValidJSONObject(payload) else {
+            let types = payload.map { "\($0.key): \(type(of: $0.value))" }.sorted()
+            log("INVALID JSON payload for \(route) — \(types)")
+            return Data("{\"error\":\"invalid json payload\",\"types\":\"\(types)\"}".utf8)
+        }
+        return (try? JSONSerialization.data(
+            withJSONObject: payload,
+            options: [.prettyPrinted, .sortedKeys]
+        )) ?? Data("{\"error\":\"serialisation failed\"}".utf8)
     }
 }

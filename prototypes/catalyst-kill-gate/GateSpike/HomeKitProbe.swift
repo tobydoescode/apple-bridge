@@ -57,6 +57,10 @@ final class HomeKitProbe: NSObject, HMHomeManagerDelegate {
         )
 
         log("check3 home=\(home.name) rooms=\(home.rooms.count) accessories=\(home.accessories.count) userScenes=\(userScenes.count)")
+
+        // apple-bridge#18: hand the home to the measurement harness and start
+        // watching for external mutations.
+        MeasureProbe.shared.attach(home: home)
     }
 
     func homeManager(

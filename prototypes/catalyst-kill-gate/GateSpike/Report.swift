@@ -24,6 +24,35 @@ final class Report {
         // Goes to launchd's StandardOutPath when running as an agent.
         print(entry)
         fflush(stdout)
+
+        // Durable copy inside the sandbox container. The process has been observed
+        // dying by SIGKILL with no crash report, which takes the in-memory report
+        // with it — a file is the only way to see how far it got.
+        Self.appendToFile(entry)
+    }
+
+    static let logFileURL: URL = URL(fileURLWithPath: NSHomeDirectory())
+        .appendingPathComponent("Documents/gatespike.log")
+
+    private static let fileQueue = DispatchQueue(label: "gatespike.logfile")
+
+    private static func appendToFile(_ line: String) {
+        fileQueue.sync {
+            let data = Data((line + "\n").utf8)
+            let fm = FileManager.default
+            let path = logFileURL.path
+            if !fm.fileExists(atPath: path) {
+                try? fm.createDirectory(
+                    at: logFileURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                fm.createFile(atPath: path, contents: data)
+            } else if let handle = try? FileHandle(forWritingTo: logFileURL) {
+                handle.seekToEndOfFile()
+                handle.write(data)
+                try? handle.close()
+            }
+        }
     }
 
     func jsonData() -> Data {
